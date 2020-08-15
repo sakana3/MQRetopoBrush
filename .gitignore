@@ -30,3 +30,5 @@
 *.exe
 *.out
 *.app
+/MQRetopoBrush.vcxproj.user
+/x64
