@@ -16,26 +16,25 @@
 #include <algorithm>
 #include <iostream>
 #include <type_traits>
-#include "libacc\\bvh_tree.h"
 #include "MQGeometry.h"
 
 HINSTANCE g_hInstance;
 
 
-std::vector<int>  MakeQuad(const std::vector<int>& quad, const std::vector< MQPoint >& points, const std::vector< MQPoint >& coords , const MQPoint& pivot)
+std::vector<int>  MakeQuad(const std::vector<int>& quad, const std::vector< MQPoint >& points, const std::vector< MQPoint >& coords, const MQPoint& pivot)
 {
 
-//	angle = acos(x / sqrt(x*x + y * y));
-//	angle = angle * 180.0 / PI;
-//	if (y<0)angle = 360.0 - angle;
-	std::vector< std::pair< int , float > > temp;
+	//	angle = acos(x / sqrt(x*x + y * y));
+	//	angle = angle * 180.0 / PI;
+	//	if (y<0)angle = 360.0 - angle;
+	std::vector< std::pair< int, float > > temp;
 	temp.reserve(quad.size());
 	for (auto q : quad)
 	{
 		auto p = coords[q] - pivot;
-		float angle = acos(p.x / sqrt(p.x*p.x + p.y * p.y));
+		float angle = acos(p.x / sqrt(p.x * p.x + p.y * p.y));
 		angle = angle * 180.0f / PI;
-		if (p.y<0)angle = 360.0f - angle;
+		if (p.y < 0)angle = 360.0f - angle;
 		temp.push_back(std::pair< int, float >(q, angle));
 	}
 
@@ -48,7 +47,7 @@ std::vector<int>  MakeQuad(const std::vector<int>& quad, const std::vector< MQPo
 
 	std::vector<int> ret;
 	ret.reserve(quad.size());
-	for ( const auto& t : temp)
+	for (const auto& t : temp)
 	{
 		ret.push_back(t.first);
 	}
@@ -61,16 +60,19 @@ class MQRetopoBrush : public MQCommandPlugin
 {
 	friend class MQAutoQuadWindow;
 
+	typedef std::pair<int, float> BrushVert;
+	typedef std::vector<BrushVert> BrushVerts;
+
 public:
 	// コンストラクタ
 	MQRetopoBrush();
 
 	// プラグインIDを返す。
-	virtual void GetPlugInID(DWORD *Product, DWORD *ID);
+	virtual void GetPlugInID(DWORD* Product, DWORD* ID);
 	// プラグイン名を返す。
-	virtual const char *GetPlugInName(void);
+	virtual const char* GetPlugInName(void);
 	// ポップアップメニューに表示される文字列を返す。
-	virtual const wchar_t *EnumString(void);
+	virtual const wchar_t* EnumString(void);
 	// アプリケーションの初期化
 	virtual BOOL Initialize();
 	// アプリケーションの終了
@@ -90,22 +92,18 @@ public:
 	virtual BOOL OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state);
 	virtual BOOL OnMouseWheel(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state);
 
-	std::vector<int> FindVerts(MQDocument doc, MQScene scene, const MQPoint&  mouse_pos, bool ignore_border);
-	std::vector<int> FindMirror(MQObject obj, const std::vector<MQPoint>& verts, const std::vector<int>& face, float SymmetryDistance);
+	BrushVerts FindVerts(MQDocument doc, MQScene scene, const MQPoint& mouse_pos, bool ignore_border);
 
-	void Smooth(MQScene scene, MQObject obj, std::vector<int>& verts , float strength , int iteration );
+	void Smooth(MQScene scene, MQObject obj, const BrushVerts& verts, float strength, int iteration);
 
 	void clear(bool isGeom, bool isScene, bool isSnap)
 	{
 		if (isGeom) { mqGeom.Clear(); }
-		if (isScene || isGeom ) sceneCache.Clear();
+		if (isScene || isGeom) sceneCache.Clear();
 		if (isSnap) mqSnap = MQSnap();
 		if (isGeom || isScene) border.Clear();
 
 		Verts.clear();
-#if _DEBUG
-		unk3.clear();
-#endif
 	}
 
 	// アンドゥ実行時
@@ -117,16 +115,23 @@ public:
 	// オブジェクトの編集時
 	virtual void OnObjectModified(MQDocument doc) { Trace("OnObjectModified\n"); clear(true, true, false); }
 	// カレントオブジェクトの変更時
-	virtual void OnUpdateObjectList(MQDocument doc) { clear(true, true, true); }
+	virtual void OnUpdateObjectList(MQDocument doc) { clear(true, true, false); }
 	// シーン情報の変更時
 	virtual void OnUpdateScene(MQDocument doc, MQScene scene) { clear(false, true, false); }
 
+	EDIT_OPTION option()
+	{
+		EDIT_OPTION option;
+		GetEditOption(option);
+		return option;
+	}
+
+
 private:
 	bool m_bActivated;
-	bool m_bUseHandle;
-	bool m_bShowHandle;
+	HCURSOR m_MoveCursor = NULL;
 
-	std::vector<int> Verts;
+	BrushVerts Verts;
 	std::vector<int> Mirror;
 	MQGeom mqGeom;
 	MQSnap mqSnap;
@@ -138,9 +143,6 @@ private:
 
 	bool DoBrush = false;
 
-#if _DEBUG
-	std::vector<MQPoint> unk3;
-#endif
 };
 
 
@@ -157,12 +159,12 @@ MQRetopoBrush::MQRetopoBrush()
 //  SingleMovePlugin::GetPlugInID
 //    プラグインIDを返す。
 //---------------------------------------------------------------------------
-void MQRetopoBrush::GetPlugInID(DWORD *Product, DWORD *ID)
+void MQRetopoBrush::GetPlugInID(DWORD* Product, DWORD* ID)
 {
 	// プロダクト名(制作者名)とIDを、全部で64bitの値として返す
 	// 値は他と重複しないようなランダムなもので良い
 	*Product = 0xA0E090AD;
-	*ID =      0x12AD137E;
+	*ID = 0x12AD137E;
 }
 
 
@@ -170,7 +172,7 @@ void MQRetopoBrush::GetPlugInID(DWORD *Product, DWORD *ID)
 //  SingleMovePlugin::GetPlugInName
 //    プラグイン名を返す。
 //---------------------------------------------------------------------------
-const char *MQRetopoBrush::GetPlugInName(void)
+const char* MQRetopoBrush::GetPlugInName(void)
 {
 	return "MQ Retopo Brush      by sakana3";
 }
@@ -180,7 +182,7 @@ const char *MQRetopoBrush::GetPlugInName(void)
 //  SingleMovePlugin::EnumString
 //    ボタンに表示される文字列を返す。
 //---------------------------------------------------------------------------
-const wchar_t *MQRetopoBrush::EnumString(void)
+const wchar_t* MQRetopoBrush::EnumString(void)
 {
 	return L"Retopo Brush";
 }
@@ -191,6 +193,10 @@ const wchar_t *MQRetopoBrush::EnumString(void)
 //---------------------------------------------------------------------------
 BOOL MQRetopoBrush::Initialize()
 {
+	if (m_MoveCursor == NULL) {
+		m_MoveCursor = LoadCursor(g_hInstance, MAKEINTRESOURCE(IDC_CURSOR1));
+	}
+
 	return TRUE;
 }
 
@@ -212,10 +218,12 @@ BOOL MQRetopoBrush::Activate(MQDocument doc, BOOL flag)
 	{
 		mqSnap.Update(doc);
 		mqGeom.Clear();
+		SetMouseCursor(m_MoveCursor);
 	}
 	else
 	{
 		clear(true, true, true);
+		SetMouseCursor(GetResourceCursor(MQCURSOR_DEFAULT));
 	}
 
 	m_bActivated = flag ? true : false;
@@ -224,7 +232,7 @@ BOOL MQRetopoBrush::Activate(MQDocument doc, BOOL flag)
 	return flag;
 }
 
-void DrawFace(MQScene scene,MQObject draw , MQObject obj, const std::vector<int>& quad, int iMat0 )
+void DrawFace(MQScene scene, MQObject draw, MQObject obj, const std::vector<int>& quad, int iMat0)
 {
 	std::vector<int> pts; pts.reserve(quad.size());
 	for (auto q : quad)
@@ -237,7 +245,7 @@ void DrawFace(MQScene scene,MQObject draw , MQObject obj, const std::vector<int>
 	draw->SetFaceMaterial(iFace, iMat0);
 
 	std::reverse(pts.begin(), pts.end());
- 	iFace = draw->AddFace((int)pts.size(), pts.data());
+	iFace = draw->AddFace((int)pts.size(), pts.data());
 	draw->SetFaceMaterial(iFace, iMat0);
 }
 
@@ -251,37 +259,37 @@ void MQRetopoBrush::OnDraw(MQDocument doc, MQScene scene, int width, int height)
 	if (!m_bActivated) return;
 
 	MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
-	MQColor color =  GetSystemColor(MQSYSTEMCOLOR_TEMP);
+	MQColor color = GetSystemColor(MQSYSTEMCOLOR_TEMP);
 
-#if _DEBUG
 	MQObject drawPoint = CreateDrawingObject(doc, DRAW_OBJECT_POINT);
-	for( const auto& v : Verts  )
+	drawPoint->SetColor(MQColor(1, 1, 1));
+	drawPoint->SetColorValid(TRUE);
+	for (const auto& v : Verts)
 	{
-		auto p = obj->GetVertex(v);
+		auto p = obj->GetVertex(v.first);
 		auto x = drawPoint->AddVertex(p);
 		drawPoint->AddFace(1, &x);
 	}
-#endif
 
 	{
 		MQObject drawCircle = CreateDrawingObject(doc, DRAW_OBJECT_LINE);
 		drawCircle->AddRenderFlag(MQOBJECT_RENDER_ALPHABLEND);
-		drawCircle->SetColor(MQColor(1,1,1));
+		drawCircle->SetColor(MQColor(1, 1, 1));
 		drawCircle->SetColorValid(TRUE);
 
 		int circle[64];
 		for (int i = 0; i < 64; i++)
 		{
 			float ang = (float)i / 64.0f;
-			auto x = cosf(ang * 2.0f * PI) * cursor_radius +cursor_pos.x;
-			auto y = sinf(ang * 2.0f * PI) * cursor_radius +cursor_pos.y;
-			MQPoint p = MQPoint(x, y, scene->GetFrontZ() );
+			auto x = cosf(ang * 2.0f * PI) * cursor_radius + cursor_pos.x;
+			auto y = sinf(ang * 2.0f * PI) * cursor_radius + cursor_pos.y;
+			MQPoint p = MQPoint(x, y, scene->GetFrontZ());
 			auto v = scene->ConvertScreenTo3D(p);
 			circle[i] = drawCircle->AddVertex(v);
 		}
 		for (int i = 0; i < 64; i++)
 		{
-			int line[2] = { circle[i] , circle[(i+1)%64] };
+			int line[2] = { circle[i] , circle[(i + 1) % 64] };
 			drawCircle->AddFace(2, line);
 		}
 	}
@@ -378,24 +386,27 @@ BOOL MQRetopoBrush::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_STAT
 	{
 		ignore_border = false;
 	}
-	this->Verts = FindVerts(doc,scene, mouse_pos , ignore_border);
+
+	this->Verts = FindVerts(doc, scene, mouse_pos, ignore_border);
 
 	return FALSE;
 }
 
 
-void MQRetopoBrush::Smooth(MQScene scene, MQObject obj ,std::vector<int>& verts, float strength, int iteration)
+void MQRetopoBrush::Smooth(MQScene scene, MQObject obj, const BrushVerts& verts, float strength, int iteration)
 {
 	std::vector<MQPoint> cos(mqGeom.obj->verts.size());
 	auto screen = sceneCache.Get(scene, mqGeom.obj);
+	bool isSnap = option().SnapFace;
+	bool isSymmetry = option().Symmetry;
 
 	for (int it = 0; it < iteration; it++)
 	{
 		if (strength > 0.0f)
 		{
-			for (int vi : verts)
+			for ( const auto& vi : verts)
 			{
-				auto vert = &mqGeom.obj->verts[vi];
+				auto vert = &mqGeom.obj->verts[vi.first];
 				MQVector avg = MQVector(0.0f);
 				float div = 0.0f;
 				for (const auto edge : vert->link_edges)
@@ -405,120 +416,116 @@ void MQRetopoBrush::Smooth(MQScene scene, MQObject obj ,std::vector<int>& verts,
 				}
 				avg /= div;
 
-				cos[vi] = vert->co.Lerp(avg, strength);
+				cos[vi.first] = vert->co.Lerp(avg, strength);
 			}
 		}
 		else
 		{
-			for (int vi : verts)
+			for (const auto& vi : verts)
 			{
-				cos[vi] = mqGeom.obj->verts[vi].co;
+				cos[vi.first] = mqGeom.obj->verts[vi.first].co;
 			}
 		}
-		for (int vi : verts)
-		{
-			auto vert = &mqGeom.obj->verts[vi];
-			auto co = cos[vi];
 
-			co = mqSnap.colsest_point(co).position;
+		for (const auto& vi: verts)
+		{
+			auto vert = &mqGeom.obj->verts[vi.first];
+			auto co = cos[vi.first];
+			if (isSnap)
+			{
+				co = mqSnap.colsest_point(co).position;
+			}
+
+			MQGeom::Vert* mirror = NULL;
+			if (isSymmetry)
+			{
+				mirror = mqGeom.obj->find_mirror(vert);
+				if (mirror != NULL)
+				{
+					if (mirror != vert)
+					{
+						auto t = std::find_if(
+							verts.begin(), verts.end(),
+							[&](const auto& o) { return (o.first == mirror->id); });
+						if (t != verts.end())
+						{
+							if (vi.second < t->second)
+							{
+								mirror = NULL;
+							}
+						}
+
+					}
+					else
+					{
+						co.x = 0.0f;
+					}
+				}
+			}
+
+			if (mirror != NULL)
+			{
+				auto mco = MQPoint(-co.x, co.y, co.z);
+				mirror->co = mco;
+				mqGeom.obj->cos[mirror->id] = mco;
+				obj->SetVertex(mirror->id, mco);
+				screen->UpdateVert(scene, mirror->id, mco);
+			}
 
 			vert->co = co;
-			mqGeom.obj->cos[vi] = co;
-			obj->SetVertex(vi, co);
-			screen->UpdateVert( scene , vi , co );
+			mqGeom.obj->cos[vi.first] = co;
+			obj->SetVertex(vi.first, co);
+			screen->UpdateVert(scene, vi.first, co);
+
 		}
 	}
+
 }
 
 
-std::vector<int> MQRetopoBrush::FindVerts(MQDocument doc, MQScene scene , const MQPoint&  mouse_pos , bool ignore_border )
+MQRetopoBrush::BrushVerts MQRetopoBrush::FindVerts(MQDocument doc, MQScene scene, const MQPoint& mouse_pos, bool ignore_border)
 {
 	//スクリーン変換
 	auto screen = sceneCache.Get(scene, mqGeom.obj);
-
 	float radius = this->cursor_radius * this->cursor_radius;
+	bool isSymmetry = option().Symmetry;
 
-	// 頂点の射影変換
-	std::vector< int > verts;
-	for (const auto& vi : mqGeom.obj->verts)
+	BrushVerts verts; verts.reserve(100);
+	for (auto& vi : mqGeom.obj->verts)
 	{
 		if (screen->in_screen[vi.id])
 		{
 			float dx = mouse_pos.x - screen->coords[vi.id].x;
 			float dy = mouse_pos.y - screen->coords[vi.id].y;
 			float dist = dx * dx + dy * dy;
-			if ( radius >= dist )
+			if (radius >= dist)
 			{
-				if ( !ignore_border || !vi.is_border())
+				if (!ignore_border || !vi.is_border())
 				{
-//					if ( vi.link_faces.size() > 1 )
+					//					if ( vi.link_faces.size() > 1 )
 					{
 						if (mqSnap.check_view(scene, vi.co))
 						{
-							verts.push_back(vi.id);
+							verts.push_back(BrushVert(vi.id, dist / radius));
+							if (isSymmetry)
+							{
+								auto mirror = mqGeom.obj->find_mirror(&vi);
+							}
 						}
 					}
 				}
 			}
 		}
 	}
-
 	return verts;
 }
 
-
-std::vector<int> MQRetopoBrush::FindMirror(MQObject obj, const std::vector<MQPoint>& verts, const std::vector<int>& poly, float SymmetryDistance)
-{
-	std::vector<int> mirror(poly.size(), -1);
-	auto dist = SymmetryDistance * SymmetryDistance;
-	std::vector<MQPoint> mirrorPos(poly.size());
-	for (int i = 0; i < poly.size(); i++)
-	{
-		auto p = verts[poly[i]];
-		mirrorPos[i] = MQPoint(-p.x, p.y, p.z);
-	}
-
-	for (int fi = 0; fi < poly.size(); fi++)
-	{
-		auto p = mirrorPos[fi];
-		auto dist = SymmetryDistance * SymmetryDistance;
-		for (int vi = 0; vi < verts.size(); vi++)
-		{
-			auto v = verts[vi];
-			auto d = v - p;
-			auto f = d.norm();
-			if (dist >= f)
-			{
-				mirror[fi] = vi;
-				dist = f;
-			}
-		}
-	}
-
-	std::set<int> mirror_set(mirror.begin(), mirror.end());
-	std::set<int> poly_set(poly.begin(), poly.end());
-
-	if (std::find(mirror.begin(), mirror.end(), -1) != mirror.end())
-	{
-		mirror.clear();
-	}
-	else if (mirror_set == poly_set)
-	{
-		mirror.clear();
-	}
-	else
-	{
-		std::reverse(mirror.begin(), mirror.end());
-	}
-
-	return mirror;
-}
 
 //---------------------------------------------------------------------------
 //  GetPluginClass
 //    プラグインのベースクラスを返す
 //---------------------------------------------------------------------------
-MQBasePlugin *GetPluginClass()
+MQBasePlugin* GetPluginClass()
 {
 	static MQRetopoBrush plugin;
 	return &plugin;

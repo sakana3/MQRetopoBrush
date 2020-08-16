@@ -2,6 +2,7 @@
 
 #include "MQ3DLib.h"
 #include "MQPlugin.h"
+#include "libacc\\bvh_tree.h"
 
 #define MAX_FACE_VERT 100
 
@@ -11,6 +12,25 @@
         sprintf_s( c , 4096, str, __VA_ARGS__ ); \
         OutputDebugString( c ); \
       }
+
+class TimeTracer
+{
+	std::chrono::system_clock::time_point  start;
+	std::string messga;
+public:
+	TimeTracer( std::string messga = "hoge" )
+	{
+		this->messga = messga;
+		start = std::chrono::system_clock::now();
+	}
+
+	~TimeTracer()
+	{
+		auto end = std::chrono::system_clock::now();
+		float elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+		Trace("%s : %f\n" , messga.c_str() , elapsed);
+	}
+};
 
 
 struct MQVector
@@ -268,11 +288,12 @@ public:
 
 	struct Vert
 	{
-		int id;
+		int id = -1;
 		MQVector co;
 		std::vector<hEdge> link_edges;
 		std::vector<hFace> link_faces;
-		Vert() : id(-1) {}
+		hVert				mirror = NULL;
+		Vert() {}
 		bool is_border() const
 		{
 			return std::any_of(link_edges.begin(), link_edges.end(), [](const auto& t) { return t->is_border(); });
@@ -329,7 +350,7 @@ public:
 	};
 	struct Face
 	{
-		int id;
+		int id = -1;
 		std::vector<hVert> verts;
 		std::vector<hEdge> link_edges;
 		Face(int _id = -1) : id(_id) {}
@@ -390,6 +411,25 @@ public:
 				}
 			}
 			return NULL;
+		}
+
+		Vert* find_mirror(Vert* vert , float sqrt_dist = 0.000000001f )
+		{
+			if (vert->mirror == NULL)
+			{
+				auto mco = MQVector(-vert->co.x, vert->co.y, vert->co.z);
+				for (auto& v : verts)
+				{
+					float d = (v.co - mco).square_norm();
+					if (d < sqrt_dist)
+					{
+						vert->mirror = &v;
+						v.mirror = vert;
+						break;
+					}
+				}
+			}
+			return vert->mirror;
 		}
 
 	private:
@@ -609,7 +649,7 @@ public :
 	}
 };
 
-typedef acc::BVHTree<int, MQVector> MQBVHTree;
+typedef acc::BVHTree< int, MQVector> MQBVHTree;
 
 class MQSnap
 {
@@ -637,37 +677,46 @@ public:
 
 			auto fcnt = obj->GetFaceCount();
 			std::vector<int> triangles;
+			triangles.reserve(fcnt * 2);
 			triangle_map = std::shared_ptr<std::vector<int>>(new std::vector<int>());
-			for (int fi = 0; fi < fcnt; fi++)
+			triangle_map->reserve(fcnt * 3 * 2);
 			{
-				int pcnt = obj->GetFacePointCount(fi);
-				if (pcnt >= 3)
+				TimeTracer timer;
+				for (int fi = 0; fi < fcnt; fi++)
 				{
-					int triCount = (pcnt - 2);
-					int triSize = triCount * 3;
-					int is[MAX_FACE_VERT]; //= (int*)alloca(sizeof(int) * pcnt);
+					int pcnt = obj->GetFacePointCount(fi);
+					if (pcnt >= 3)
+					{
+						int triCount = (pcnt - 2);
+						int triSize = triCount * 3;
+						int is[MAX_FACE_VERT]; //= (int*)alloca(sizeof(int) * pcnt);
 						int tris[MAX_FACE_VERT];// = (int*)alloca(sizeof(int) * triSize);
 						MQPoint points[MAX_FACE_VERT]; // = (MQPoint*)alloca(sizeof(MQPoint) * pcnt);
-					obj->GetFacePointArray(fi, is);
-					for (int i = 0; i < pcnt; i++)
-					{
-						points[i] = verts[is[i]];
-					}
+						obj->GetFacePointArray(fi, is);
+						for (int i = 0; i < pcnt; i++)
+						{
+							points[i] = verts[is[i]];
+						}
 
-					doc->Triangulate(points, pcnt, tris, triSize);
+						doc->Triangulate(points, pcnt, tris, triSize);
 
-					for (int it = 0; it < triSize; it++)
-					{
-						auto x = tris[it];
-						triangles.push_back(is[x]);
-					}
-					for (int it = 0; it < triCount; it++)
-					{
-						triangle_map->push_back(fi);
+						for (int it = 0; it < triSize; it++)
+						{
+							auto x = tris[it];
+							triangles.push_back(is[x]);
+						}
+						for (int it = 0; it < triCount; it++)
+						{
+							triangle_map->push_back(fi);
+						}
 					}
 				}
 			}
-			bvh_tree = MQBVHTree::create(triangles, verts);
+
+			{
+				TimeTracer timer;
+				bvh_tree = MQBVHTree::create(triangles, verts, std::thread::hardware_concurrency());
+			}
 		}
 	};
 
@@ -775,8 +824,6 @@ public:
 
 		auto hit = (hit0.t < hit1.t) ? hit0 : hit1;
 		auto t = (hitV.position - hit.position).abs();
-
-		Trace("{%f}{%f}\n" ,t , thrdshold);
 
 		return t < thrdshold;
 	}
