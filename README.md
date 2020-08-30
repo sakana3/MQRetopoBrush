@@ -2,7 +2,7 @@
 メタセコイア向けリトポプラグイン
 
 # Download
-[64bit版](https://github.com/sakana3/MQRetopoBrush/releases/download/v1.0.0/MQRetopoBrush_x64.zip)
+[64bit版](https://github.com/sakana3/MQRetopoBrush/releases/download/v1.0.0/MQRetopoBrush_x64.zip)  
 [32bit版](https://github.com/sakana3/MQRetopoBrush/releases/download/v1.0.0/MQRetopoBrush_win32.zip)
 
 # How to Use  
