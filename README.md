@@ -1,16 +1,26 @@
 # MQRetopoBrush
 メタセコイア向けリトポプラグイン
 
-# How TO  
+# Download
+[64bit版](https://github.com/sakana3/MQRetopoBrush/releases/download/v1.0.0/MQRetopoBrush_x64.zip)
+[32bit版](https://github.com/sakana3/MQRetopoBrush/releases/download/v1.0.0/MQRetopoBrush_win32.zip)
+
+# How to Use  
 
 - 編集対象は現在編集中のオブジェクトのみ  
-- LMBでなでるとスムース。境界エッジは無視
-- Shift+LMBで境界エッジにもスムース
+- LMBでなでるとスムース。
 - スナップがFaceになっているとLockがかかっているオブジェクトにスナップ  
-- Ctrl＋LMBでシュリンクラップブラシ。（スムースは行わずスナップのみを行う）
+- ブラシには次のタイプがあります  
+|名前        |説明          |
+|:-----------|------------:|
+|Smooth      |トポロジを滑らかにします。ボーダーエッジ（オープンエッジ）は含みません          |
+|SmoothWithBorder      | トポロジを滑らかにします。ボーダーエッジ（オープンエッジ）を含みます         |
+|Tweak      |調整ブラシ          |
+|Shrink Wrap      |スナップのみを行います          |
 
-# ToDo
+-- Smooth
+-- SmoothWithBorder
+-- Tweak
+-- Shrink Wrap
 
-- 対象編集
-- 強度の距離減衰
-- 設定オプション
+
