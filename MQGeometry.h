@@ -269,6 +269,7 @@ public:
 
 };
 
+
 static_assert(sizeof(MQVector) == sizeof(MQPoint), "size tigai mangana");
 
 
@@ -383,8 +384,6 @@ public:
 
 			return false;
 		}
-
-
 	};
 
 	struct Obj
@@ -753,6 +752,7 @@ public:
 	struct Hit
 	{
 		bool is_hit = false;
+		int idx = -1;
 		MQPoint position;
 		float t;
 	};
@@ -777,6 +777,7 @@ public:
 			{
 				result.position = ray.origin + ray.dir * hit.t;
 				result.t = hit.t;
+				result.idx = hit.idx;
 				result.is_hit = true;
 				tmin = hit.t;
 			}
@@ -810,11 +811,12 @@ public:
 
 		auto view_ray = MQRay(scene, screen_pos);
 		auto ray = MQRay(pos, view_ray.vector);
-
+		MQPoint vp = view_ray.origin;
 		MQSnap::Hit hitV = intersect(view_ray);
 		if (!hitV.is_hit) return true;
-		float d = (hitV.position - pos).abs();
-		if ( d < thrdshold)
+		float d0 = (pos - vp).abs();
+		float d1 = (hitV.position - vp).abs();
+		if ( d0 < d1 + thrdshold)
 		{
 			return true;
 		}
@@ -822,10 +824,13 @@ public:
 		auto hit0 = intersect(ray.negative());
 		auto hit1 = intersect(ray);
 
-		auto hit = (hit0.t < hit1.t) ? hit0 : hit1;
-		auto t = (hitV.position - hit.position).abs();
+		if (hit0.t > hit1.t) return false;
 
-		return t < thrdshold;
+		if( hit0.idx == hitV.idx ) return true;
+
+		auto d2 = hitV.t + hit0.t;
+
+		return abs(d0-d2) < thrdshold;
 	}
 
 	std::map<MQObject, std::shared_ptr<Tree> > trees;
