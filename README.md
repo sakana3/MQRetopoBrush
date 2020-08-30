@@ -1,5 +1,5 @@
 # MQRetopoBrush
-メタセコイア向けリトポプラグイン
+メタセコイア向けリトポサポートプラグイン
 
 # Download
 [64bit版](https://github.com/sakana3/MQRetopoBrush/releases/download/v1.0.0/MQRetopoBrush_x64.zip)  
