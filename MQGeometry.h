@@ -299,6 +299,22 @@ public:
 		{
 			return std::any_of(link_edges.begin(), link_edges.end(), [](const auto& t) { return t->is_border(); });
 		}
+		bool is_polygon() const
+		{
+			return link_faces.size() > 0;
+		}
+		MQPoint normal() const
+		{
+			MQPoint normal(0,0,0);
+			for ( auto face : link_faces)
+			{
+				normal += face->corner_normal(this);
+			}
+			normal = normal / link_faces.size();
+			normal.normalize();
+			return normal;
+		}
+
 	};
 	struct Edge
 	{
@@ -348,6 +364,11 @@ public:
 			}
 			return NULL;
 		}
+
+		bool containts(const hVert vert) const
+		{
+			return (verts[0] == vert) || (verts[1] == vert);
+		}
 	};
 	struct Face
 	{
@@ -355,6 +376,39 @@ public:
 		std::vector<hVert> verts;
 		std::vector<hEdge> link_edges;
 		Face(int _id = -1) : id(_id) {}
+
+		int vert_index(const Vert* vert) const
+		{
+			for (int i = 0 ; i < verts.size(); i++)
+			{
+				if (verts[i] == vert)
+				{
+					return i;
+				}
+			}
+			return -1;
+		}
+
+		const Vert* loop_next(const Vert* vert) const
+		{
+			auto idx = vert_index(vert);
+			return verts[ (idx + 1) % verts.size() ];
+			return NULL;
+		}
+		const Vert* loop_prev(const Vert* vert) const
+		{
+			auto idx = vert_index(vert);
+			return verts[(idx - 1+ verts.size()) % verts.size()];
+			return NULL;
+		}
+
+		MQPoint corner_normal(const Vert* vert) const
+		{
+			auto n0 = (loop_next(vert)->co - vert->co).normalized();
+			auto n1 = (loop_prev(vert)->co - vert->co).normalized();
+			return n0.cross(n1);
+			return MQPoint(0, 1, 0);
+		}
 
 		bool is_front( MQScene scene )
 		{
@@ -803,6 +857,21 @@ public:
 			}
 		}
 		return hit;
+	}
+
+	MQPoint snap_point(const MQGeom::Vert* vert)
+	{
+		if (!vert->is_polygon())
+		{
+			return colsest_point(vert->co).position;
+		}
+		else
+		{
+			MQRay ray = MQRay(vert->co, vert->normal() );
+			auto hit0 = intersect(ray);
+			auto hit1 = intersect(ray.negative());
+			return (hit0.t > hit1.t) ? hit1.position : hit0.position;
+		}
 	}
 
 	bool check_view(MQScene scene, const MQPoint& pos, float thrdshold = 0.01f) const

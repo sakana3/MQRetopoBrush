@@ -10,6 +10,7 @@
 #include "MQHandleObject.h"
 #include "MQSelectOperation.h"
 #include "MQWidget.h"
+#include "MQSetting.h"
 #include "MQ3DLib.h"
 #include "resource.h"
 #include <limits>
@@ -43,6 +44,11 @@ class MQRetopoBrush : public MQCommandPlugin
 		LINER,
 	};
 
+	enum SNAP_TYPE
+	{
+		NORMAL,
+		CLOSEST,
+	};
 
 	friend class MQRetopoWindow;
 
@@ -82,7 +88,10 @@ public:
 	BrushVerts FindVerts(MQDocument doc, MQScene scene, const MQPoint& mouse_pos, bool ignore_border);
 	void Smooth(MQScene scene, MQObject obj, const BrushVerts& verts, float strength, int iteration);
 	void Tweak(MQScene scene, MQObject obj, const BrushVerts& verts, float strength, const MQPoint& move, bool fix);
-	void FixPositions(MQScene scene, MQObject obj, const BrushVerts& verts, const std::vector<MQPoint>& positions,  bool fix = true);
+	void DoShrinkWrap(MQScene scene, MQObject obj);
+	void FixPositions(MQScene scene, MQObject obj, const BrushVerts& verts, const std::vector<MQPoint>& positions, bool fix_pos);
+	void FixView(MQScene scene, MQObject obj, const BrushVerts& verts);
+
 	void ShrinkWrap(MQScene scene, MQObject obj, const BrushVerts& verts);
 	float getFalloff(float val);
 
@@ -136,6 +145,7 @@ private:
 	MQPoint start_cursor_pos;
 	MODE mode;
 	FALLOFF falloff = FALLOFF::CURVE;
+	SNAP_TYPE snap_type = SNAP_TYPE::NORMAL;
 
 	MODE mainBrush = MQRetopoBrush::MODE::SMOOTH;
 	MODE shiftBrush = MQRetopoBrush::MODE::SMOOTH_WITH_BORDER;
@@ -165,6 +175,16 @@ public:
 		{L"Curve",MQRetopoBrush::FALLOFF::CURVE},
 		{L"Const",MQRetopoBrush::FALLOFF::CONSTANT},
 		{L"Liner",MQRetopoBrush::FALLOFF::LINER}
+	};
+
+	struct SnapTypeTbl
+	{
+		std::wstring name;
+		MQRetopoBrush::SNAP_TYPE type;
+		MQButton* button = NULL;
+	} snap_type[2] = {
+		{L"Normal",MQRetopoBrush::SNAP_TYPE::NORMAL},
+		{L"Closest",MQRetopoBrush::SNAP_TYPE::CLOSEST},
 	};
 
 	struct MainBrushTbl
@@ -247,6 +267,22 @@ public:
 		{
 			MQFrame* hframe = CreateHorizontalFrame(frame);
 			hframe->SetUniformSize(true);
+			hframe->SetInSpace(0);
+
+			CreateLabel(hframe, L"Snap Type");
+			for (auto& fo : snap_type)
+			{
+				fo.button = CreateButton(hframe, fo.name);
+				fo.button->SetToggle(true);
+				fo.button->SetDown(m_Plugin->snap_type == fo.type);
+				fo.button->SetPaddingX(0);
+				fo.button->AddClickEvent(this, &MQRetopoWindow::OnChangeSnapType);
+			}
+		}
+
+		{
+			MQFrame* hframe = CreateHorizontalFrame(frame);
+			hframe->SetUniformSize(true);
 			CreateLabel(hframe, L"Main Brush");
 			auto cb = CreateComboBox(hframe);
 			cb->AddChangedEvent(this, &MQRetopoWindow::OnChangeMainBrush);
@@ -314,6 +350,15 @@ public:
 		{
 			fo.button->SetDown(sender == fo.button);
 			if (sender == fo.button) m_Plugin->falloff = fo.type;
+		}
+		return TRUE;
+	}
+	BOOL OnChangeSnapType(MQWidgetBase* sender, MQDocument doc)
+	{
+		for (auto& fo : snap_type)
+		{
+			fo.button->SetDown(sender == fo.button);
+			if (sender == fo.button) m_Plugin->snap_type = fo.type;
 		}
 		return TRUE;
 	}
@@ -431,6 +476,18 @@ BOOL MQRetopoBrush::Initialize()
 	if (m_MoveCursor == NULL) {
 		m_MoveCursor = LoadCursor(g_hInstance, MAKEINTRESOURCE(IDC_CURSOR1));
 	}
+	auto setting = OpenSetting();
+	setting->Load("brush_radius", brush_radius, 100.0f);
+	setting->Load("brush_power", brush_power, 1.0f);
+	int tmp = 0;
+	setting->Load("snap_type", tmp, (int)SNAP_TYPE::NORMAL); snap_type = (SNAP_TYPE)tmp;
+	setting->Load("mainBrush", tmp, (int)MODE::SMOOTH); mainBrush = (MODE)tmp;
+	setting->Load("shiftBrush", tmp, (int)MODE::SMOOTH_WITH_BORDER); shiftBrush = (MODE)tmp;
+	setting->Load("ctrlBrush", tmp, (int)MODE::TWEAK); ctrlBrush = (MODE)tmp;
+	setting->Load("altBrush", tmp, (int)MODE::SHRINK_WRAP); altBrush = (MODE)tmp;
+
+
+	CloseSetting(setting);
 
 	return TRUE;
 }
@@ -441,6 +498,16 @@ BOOL MQRetopoBrush::Initialize()
 //---------------------------------------------------------------------------
 void MQRetopoBrush::Exit()
 {
+	auto setting = OpenSetting();
+	setting->Save("brush_radius", brush_radius);
+	setting->Save("brush_power", brush_power);
+	setting->Save("snap_type", snap_type);
+	setting->Save("mainBrush", mainBrush);
+	setting->Save("shiftBrush", shiftBrush);
+	setting->Save("ctrlBrush", ctrlBrush);
+	setting->Save("altBrush", altBrush);
+	CloseSetting(setting);
+
 	// Release the window
 	// ウィンドウを破棄
 	delete m_Window;
@@ -540,7 +607,7 @@ void MQRetopoBrush::OnDraw(MQDocument doc, MQScene scene, int width, int height)
 	auto mat = CreateDrawingMaterial(doc,iMat);
 	mat->SetVertexColor(MQMATERIAL_VERTEXCOLOR_DIFFUSE);
 
-	MQColorRGBA c0(1, 0.2f, 0.2f, 0);
+	MQColorRGBA c0(1, 0.2f, 0.2f, 1.0f);
 	MQColorRGBA c1(1, 1, 1, 1);
 
 	for (const auto& v : Verts)
@@ -743,17 +810,28 @@ void MQRetopoBrush::Smooth(MQScene scene, MQObject obj, const BrushVerts& verts,
 				div += 1.0f;
 			}
 			avg /= div;
-
-			auto co = vert->co.Lerp(avg, strength * getFalloff(vi.second));
-			if (isSnap)
-			{
-				co = mqSnap.colsest_point(co).position;
-			}
-			cos[vi.first] = co;
+			cos[vi.first] = vert->co.Lerp(avg, strength * getFalloff(vi.second));
 		}
-
-		FixPositions(scene, obj, verts, cos);
+		FixPositions(scene, obj, verts, cos , true );
+		if (isSnap)
+		{
+			for (const auto& vi : verts)
+			{
+				auto vert = &mqGeom.obj->verts[vi.first];
+				switch (snap_type)
+				{
+				case SNAP_TYPE::CLOSEST:
+					cos[vi.first] = mqSnap.colsest_point(vert->co).position;
+					break;
+				case SNAP_TYPE::NORMAL:
+					cos[vi.first] = mqSnap.snap_point(vert);
+					break;
+				}
+			}
+			FixPositions(scene, obj, verts, cos, true );
+		}
 	}
+	FixView(scene, obj, verts);
 }
 
 void MQRetopoBrush::ShrinkWrap(MQScene scene, MQObject obj, const BrushVerts& verts)
@@ -761,11 +839,21 @@ void MQRetopoBrush::ShrinkWrap(MQScene scene, MQObject obj, const BrushVerts& ve
 	std::vector<MQPoint> cos(mqGeom.obj->verts.size());
 	for (const auto& vi : verts)
 	{
-		auto co = mqGeom.obj->verts[vi.first].co;
-		cos[vi.first] = mqSnap.colsest_point(co).position;
+		auto vert = &mqGeom.obj->verts[vi.first];
+		switch (snap_type)
+		{
+		case SNAP_TYPE::CLOSEST:
+			cos[vi.first] = mqSnap.colsest_point(vert->co).position;
+			break;
+		case SNAP_TYPE::NORMAL:
+			cos[vi.first] = mqSnap.snap_point(vert);
+			break;
+		}
 	}
-	FixPositions(scene, obj, verts, cos);
+	FixPositions(scene, obj, verts, cos,true);
+	FixView(scene, obj, verts);
 }
+
 
 void MQRetopoBrush::Tweak(MQScene scene, MQObject obj, const BrushVerts& verts, float strength, const MQPoint& move, bool fix)
 {
@@ -795,10 +883,14 @@ void MQRetopoBrush::Tweak(MQScene scene, MQObject obj, const BrushVerts& verts, 
 		cos[vi.first] = co;
 	}
 
-	FixPositions(scene, obj, verts, cos, fix);
+	FixPositions(scene, obj, verts, cos, fix );
+	if (fix)
+	{
+		FixView(scene, obj, verts);
+	}
 }
 
-void MQRetopoBrush::FixPositions(MQScene scene, MQObject obj, const BrushVerts& verts, const std::vector<MQPoint>& positions , bool fix )
+void MQRetopoBrush::FixPositions(MQScene scene, MQObject obj, const BrushVerts& verts, const std::vector<MQPoint>& positions , bool fix_pos )
 {
 	auto screen = sceneCache.Get(scene, mqGeom.obj);
 	bool isSymmetry = option().Symmetry;
@@ -838,25 +930,41 @@ void MQRetopoBrush::FixPositions(MQScene scene, MQObject obj, const BrushVerts& 
 		if (mirror != NULL)
 		{
 			auto mco = MQPoint(-co.x, co.y, co.z);
-			if (fix)
+			if (fix_pos)
 			{
 				mirror->co = mco;
 				mqGeom.obj->cos[mirror->id] = mco;
-				screen->UpdateVert(scene, mirror->id, mco);
 			}
 			obj->SetVertex(mirror->id, mco);
 		}
 
-		if (fix)
+		if (fix_pos)
 		{
 			vert->co = co;
 			mqGeom.obj->cos[vi.first] = co;
-			screen->UpdateVert(scene, vi.first, co);
 		}
 		obj->SetVertex(vi.first, co);
 	}
 }
 
+void MQRetopoBrush::FixView(MQScene scene, MQObject obj, const BrushVerts& verts)
+{
+	auto screen = sceneCache.Get(scene, mqGeom.obj);
+	bool isSymmetry = option().Symmetry;
+	for (const auto& vi : verts)
+	{
+		auto vert = &mqGeom.obj->verts[vi.first];
+		screen->UpdateVert(scene, vert->id, vert->co);
+		if (isSymmetry)
+		{
+			auto mirror = vert->mirror;
+			if (mirror != NULL)
+			{
+				screen->UpdateVert(scene, mirror->id , mirror->co);
+			}
+		}
+	}
+}
 
 MQRetopoBrush::BrushVerts MQRetopoBrush::FindVerts(MQDocument doc, MQScene scene, const MQPoint& mouse_pos, bool ignore_border)
 {
