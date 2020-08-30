@@ -680,7 +680,7 @@ public:
 			triangle_map = std::shared_ptr<std::vector<int>>(new std::vector<int>());
 			triangle_map->reserve(fcnt * 3 * 2);
 			{
-				TimeTracer timer;
+//				TimeTracer timer;
 				for (int fi = 0; fi < fcnt; fi++)
 				{
 					int pcnt = obj->GetFacePointCount(fi);
@@ -713,7 +713,7 @@ public:
 			}
 
 			{
-				TimeTracer timer;
+//				TimeTracer timer;
 				bvh_tree = MQBVHTree::create(triangles, verts, std::thread::hardware_concurrency());
 			}
 		}
