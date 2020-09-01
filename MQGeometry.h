@@ -314,7 +314,7 @@ public:
 			normal.normalize();
 			return normal;
 		}
-
+		bool is_corner() const { return link_faces.size() == 1; }
 	};
 	struct Edge
 	{
@@ -347,10 +347,9 @@ public:
 			return verts[0]->id < e.verts[0]->id;
 		}
 
-		bool is_border() const
-		{
-			return link_faces.size() <= 1;
-		}
+		bool is_border() const { return link_faces.size() <= 1;	}
+		bool is_wire() const{ return link_faces.size() == 0;}
+		bool is_open() const{ return link_faces.size() == 1;}
 
 		hVert other_vert(const hVert v)
 		{
@@ -363,6 +362,11 @@ public:
 				return verts[0];
 			}
 			return NULL;
+		}
+
+		float length() const
+		{
+			return (verts[0]->co - verts[1]->co).length();
 		}
 
 		bool containts(const hVert vert) const
