@@ -2,8 +2,8 @@
 メタセコイア向けリトポサポートプラグイン
 
 # Download
-[64bit版](https://github.com/sakana3/MQRetopoBrush/releases/download/v1.0.0/MQRetopoBrush_x64.zip)  
-[32bit版](https://github.com/sakana3/MQRetopoBrush/releases/download/v1.0.0/MQRetopoBrush_win32.zip)
+[64bit版](https://github.com/sakana3/MQRetopoBrush/releases/download/v1.0.1/MQRetopoBrush_x64.zip)  
+[32bit版](https://github.com/sakana3/MQRetopoBrush/releases/download/v1.0.1/MQRetopoBrush_win32.zip)
 
 # How to Use  
 
@@ -22,6 +22,7 @@
 |Smooth No Border|トポロジを滑らかにします。ボーダーエッジ（オープンエッジ）は含みません          |
 |Tweak|調整ブラシ          |
 |Shrink Wrap|スナップのみを行います          |
+|Relax|形状を保ったままトポロジをリラックスします。（実験中）|
 
 各ブラシはCtrl、Shift,Altに自由にアサインできます。
 ## スナップタイプ
@@ -42,6 +43,9 @@
 |Liner|線形に減衰します         |
 
 Curveだけでいいと思います。
+
+## Self Occlusion
+自己遮蔽を行い表面の頂点のみブラシをかけます。重いです。
 
 # 既知のバグ
 
