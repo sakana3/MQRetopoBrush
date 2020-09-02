@@ -229,7 +229,7 @@ public:
 		this->vector = vector.normalized();
 	}
 
-	MQRay(MQScene scene, const MQPoint2& position)
+	MQRay(MQScene scene, const MQPoint& position)
 	{
 		MQPoint p0(position.x, position.y, scene->GetFrontZ());
 		MQPoint p1(position.x, position.y, scene->GetFrontZ() + 1);
@@ -315,6 +315,7 @@ public:
 			return normal;
 		}
 		bool is_corner() const { return link_faces.size() == 1; }
+		bool is_convex() const { return std::all_of(link_edges.begin(), link_edges.end(), [](const auto& t) { return !t->is_border(); }); }
 	};
 	struct Edge
 	{
@@ -787,21 +788,30 @@ public:
 
 	void Update(MQDocument doc)
 	{
-		std::map<MQObject, std::shared_ptr<Tree> > new_trees;
+		std::vector<MQObject> objs;
 		for (int io = 0; io < doc->GetObjectCount(); io++)
 		{
 			auto obj = doc->GetObject(io);
-
 			if (obj->GetLocking() == TRUE && obj->GetVisible() != 0)
 			{
-				if (trees.find(obj) != trees.end())
-				{
-					new_trees[obj] = trees[obj];
-				}
-				else
-				{
-					new_trees[obj] = std::shared_ptr<Tree>( new Tree(doc, obj) );
-				}
+				objs.push_back(obj);
+			}
+		}
+		Update( doc ,objs );
+	}
+
+	void Update(MQDocument doc , const std::vector<MQObject>& objs )
+	{
+		std::map<MQObject, std::shared_ptr<Tree> > new_trees;
+		for (auto obj : objs)
+		{
+			if (trees.find(obj) != trees.end())
+			{
+				new_trees[obj] = trees[obj];
+			}
+			else
+			{
+				new_trees[obj] = std::shared_ptr<Tree>(new Tree(doc, obj));
 			}
 		}
 		trees = new_trees;
@@ -809,6 +819,7 @@ public:
 
 	struct Hit
 	{
+		MQObject obj = NULL;
 		bool is_hit = false;
 		int idx = -1;
 		MQPoint position;
@@ -833,9 +844,10 @@ public:
 			MQBVHTree::Hit hit;
 			if (tree.second->bvh_tree->intersect(ray, &hit))
 			{
+				result.obj = tree.first;
 				result.position = ray.origin + ray.dir * hit.t;
 				result.t = hit.t;
-				result.idx = hit.idx;
+				result.idx = (*tree.second->triangle_map)[hit.idx];
 				result.is_hit = true;
 				tmin = hit.t;
 			}
@@ -858,6 +870,7 @@ public:
 				hit.position = r.first;
 				hit.t = r.second;
 				hit.is_hit = true;
+				hit.obj = tree.first;
 			}
 		}
 		return hit;
@@ -883,23 +896,23 @@ public:
 		MQVector screen_pos = scene->Convert3DToScreen(pos);
 
 		auto view_ray = MQRay(scene, screen_pos);
-		auto ray = MQRay(pos, view_ray.vector);
 		MQPoint vp = view_ray.origin;
 		MQSnap::Hit hitV = intersect(view_ray);
 		if (!hitV.is_hit) return true;
-		float d0 = (pos - vp).abs();
-		float d1 = (hitV.position - vp).abs();
+		float d0 = (pos - vp).abs();	//視点から頂点への距離
+		float d1 = hitV.t;				//視点からヒット点への距離
 		if ( d0 < d1 + thrdshold)
 		{
 			return true;
 		}
 
+		auto ray = MQRay(pos, view_ray.vector);
 		auto hit0 = intersect(ray.negative());
+
+		if (hit0.obj == hitV.obj && hit0.idx == hitV.idx) return true;
+
 		auto hit1 = intersect(ray);
-
 		if (hit0.t > hit1.t) return false;
-
-		if( hit0.idx == hitV.idx ) return true;
 
 		auto d2 = hitV.t + hit0.t;
 
